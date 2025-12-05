@@ -12,6 +12,32 @@ import os
 import random
 from datetime import datetime
 import io
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.pagesizes import letter
+from io import BytesIO
+
+def generate_missed_questions_pdf(missed_questions):
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter)
+    styles = getSampleStyleSheet()
+    story = []
+
+    story.append(Paragraph("<b>Missed Questions Report</b>", styles['Title']))
+    story.append(Spacer(1, 20))
+
+    if not missed_questions:
+        story.append(Paragraph("No missed questions — great job!", styles['BodyText']))
+    else:
+        for i, item in enumerate(missed_questions, start=1):
+            story.append(Paragraph(f"<b>Question {i}:</b> {item['question_text']}", styles['BodyText']))
+            story.append(Paragraph(f"<b>Your Answer:</b> {item['your_answer']}", styles['BodyText']))
+            story.append(Paragraph(f"<b>Correct Answer:</b> {item['correct_answer']}", styles['BodyText']))
+            story.append(Spacer(1, 12))
+
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
 
 class QuizManager:
     def __init__(self):
@@ -380,6 +406,101 @@ def take_quiz(quiz_manager):
     # Display current quiz if in progress
     if st.session_state.quiz_started and st.session_state.current_quiz:
         display_quiz_question(quiz_manager)
+            # Show results and allow PDF download after quiz completion
+    if st.session_state.get('quiz_completed', False) and st.session_state.get('current_quiz'):
+        st.markdown("---")
+        st.header("📋 Quiz Results")
+
+        # Use the stats already stored in quiz_manager.current_stats if available
+        stats = quiz_manager.current_stats
+        total = stats.get('total_questions', 0)
+        correct = stats.get('correct_answers', 0)
+
+        # Fallback calculation if stats are missing or zero
+        if total == 0 and st.session_state.current_quiz:
+            # compute from answers as a safe fallback
+            total = len(st.session_state.current_quiz)
+            correct = 0
+            for q, ans in zip(st.session_state.current_quiz, st.session_state.user_answers):
+                if ans == q['correct_answer']:
+                    correct += 1
+
+        pct = round((correct / total) * 100, 1) if total > 0 else 0.0
+
+        col1, col2, col3 = st.columns([1,1,2])
+        with col1:
+            st.metric("Score", f"{correct}/{total}")
+        with col2:
+            st.metric("Percentage", f"{pct}%")
+        with col3:
+            # show class and chapters if available
+            st.write(f"**Class:** {stats.get('class_name', '—')}")
+            selected_chapters = stats.get('selected_chapters', [])
+            if selected_chapters:
+                st.write(f"**Chapters:** {', '.join(selected_chapters)}")
+
+        st.write("")
+
+        # Build missed questions list either from quiz_manager.current_stats or by comparing answers
+        missed = []
+        if stats.get('missed_questions'):
+            # convert stored missed question format into consistent fields
+            for mq in stats['missed_questions']:
+                missed.append({
+                    'question_text': mq.get('question_text', mq.get('question', '')),
+                    'your_answer': mq.get('user_answer', mq.get('your_answer', '')),
+                    'correct_answer': mq.get('correct_answer', '')
+                })
+        else:
+            # fallback: compute missed from current_quiz and user_answers
+            for q, ans in zip(st.session_state.current_quiz, st.session_state.user_answers):
+                if ans != q['correct_answer']:
+                    missed.append({
+                        'question_text': q['question_text'],
+                        'your_answer': ans,
+                        'correct_answer': q['correct_answer']
+                    })
+
+        # Display missed questions
+        st.subheader("Missed Questions")
+        if not missed:
+            st.success("🎉 You answered all questions correctly!")
+        else:
+            for i, mq in enumerate(missed, start=1):
+                with st.expander(f"Missed {i}: {mq['question_text'][:80]}"):
+                    st.write(f"**Question:** {mq['question_text']}")
+                    st.write(f"- **Your answer:** {mq['your_answer']}")
+                    st.write(f"- **Correct answer:** {mq['correct_answer']}")
+
+        # Provide PDF download of missed questions using your generator
+        try:
+            pdf_buf = generate_missed_questions_pdf([
+                {'question_text': m['question_text'],
+                 'your_answer': m['your_answer'],
+                 'correct_answer': m['correct_answer']}
+                for m in missed
+            ])
+
+            filename = f"missed_questions_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+            st.download_button(
+                label="📄 Download Missed Questions (PDF)",
+                data=pdf_buf,
+                file_name=filename,
+                mime="application/pdf"
+            )
+        except Exception as e:
+            st.error(f"Could not generate PDF: {e}")
+
+        # Optionally allow restarting a new quiz (clears state)
+        if st.button("Start a New Quiz"):
+            # clear quiz state keys but preserve loaded quizzes
+            keys_to_clear = ['current_quiz', 'current_question', 'quiz_started', 'quiz_completed',
+                             'user_answers', 'options_for_question', 'answers_processed']
+            for k in keys_to_clear:
+                if k in st.session_state:
+                    del st.session_state[k]
+            st.experimental_rerun()
+
 
 def display_quiz_question(quiz_manager):
     questions = st.session_state.current_quiz
@@ -559,3 +680,4 @@ def export_history(quiz_manager):
 if __name__ == "__main__":
 
     main()
+
