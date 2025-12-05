@@ -257,7 +257,7 @@ def main():
     )
     
     # Main content area
-    st.title("🎯 Quiz Master")
+    st.title("Quiz Master")
     
     if selected_menu == "Load Quiz Set":
         load_quiz_set(quiz_manager)
@@ -349,17 +349,33 @@ def take_quiz(quiz_manager):
             st.warning("No questions available for selected chapters.")
             return
     
-    if st.button("Start Quiz") and selected_chapters:
-        success, questions = quiz_manager.start_quiz(class_name, selected_chapters, max_questions, chapter_questions)
-        if success:
-            st.session_state.current_quiz = questions
-            st.session_state.quiz_started = True
-            st.session_state.quiz_completed = False
-            st.session_state.current_question = 0
-            st.session_state.user_answers = [None] * len(questions)
-            st.rerun()
-        else:
-            st.error(questions)
+        if st.button("Start Quiz") and selected_chapters:
+            success, questions = quiz_manager.start_quiz(class_name, selected_chapters, max_questions, chapter_questions)
+        
+            if success:
+                st.session_state.current_quiz = questions
+                st.session_state.quiz_started = True
+                st.session_state.quiz_completed = False
+                st.session_state.current_question = 0
+        
+                # NEW: Generate stable option sets
+                st.session_state.options_for_question = []
+                for q in questions:
+                    opts = q['alternatives'] + [q['correct_answer']]
+                    random.shuffle(opts)
+                    st.session_state.options_for_question.append(opts)
+        
+                # NEW: Initialize answers only once
+                st.session_state.user_answers = [None] * len(questions)
+        
+                # NEW: Prevent double-grading
+                st.session_state.answers_processed = False
+        
+                st.rerun()
+            else:
+                st.error(questions)
+        
+
     
     # Display current quiz if in progress
     if st.session_state.quiz_started and st.session_state.current_quiz:
@@ -368,43 +384,39 @@ def take_quiz(quiz_manager):
 def display_quiz_question(quiz_manager):
     questions = st.session_state.current_quiz
     current_idx = st.session_state.current_question
-    
+
+    # If quiz ended early
     if current_idx >= len(questions):
         return
-    
+
     question = questions[current_idx]
-    
+
     st.markdown("---")
     st.subheader(f"Question {current_idx + 1} of {len(questions)}")
     st.write(f"**Chapter:** {question['chapter']}")
     st.write(f"**Question:** {question['question_text']}")
-    
-    # Prepare options
-    options = question['alternatives'] + [question['correct_answer']]
-    random.shuffle(options)
-    
-    # Store the mapping for answer checking
-    if 'option_mapping' not in st.session_state:
-        st.session_state.option_mapping = {}
-    st.session_state.option_mapping[current_idx] = options
-    
-    # Display options as radio buttons
+
+    # Stable options pulled from session_state
+    options = st.session_state.options_for_question[current_idx]
+
+    # Display radio button, but do NOT reshuffle
     user_answer = st.radio(
         "Select your answer:",
         options,
         key=f"question_{current_idx}"
     )
-    
+
     st.session_state.user_answers[current_idx] = user_answer
-    
+
+    # Navigation
     col1, col2 = st.columns(2)
-    
+
     with col1:
         if current_idx > 0:
             if st.button("← Previous Question"):
                 st.session_state.current_question -= 1
                 st.rerun()
-    
+
     with col2:
         if current_idx < len(questions) - 1:
             if st.button("Next Question →"):
@@ -412,17 +424,20 @@ def display_quiz_question(quiz_manager):
                 st.rerun()
         else:
             if st.button("Submit Quiz", type="primary"):
-                # Process all answers
-                for i, (q, answer) in enumerate(zip(questions, st.session_state.user_answers)):
-                    if answer is not None:
-                        quiz_manager.submit_answer(q, answer, i + 1)
-                
+                # Prevent double-submission
+                if not st.session_state.answers_processed:
+                    for i, (q, ans) in enumerate(zip(questions, st.session_state.user_answers)):
+                        if ans is not None:
+                            quiz_manager.submit_answer(q, ans, i + 1)
+
+                    quiz_manager.save_quiz_session()
+                    st.session_state.answers_processed = True
+
                 st.session_state.quiz_completed = True
                 st.session_state.quiz_started = False
-                quiz_manager.save_quiz_session()
                 st.rerun()
 
-    # Show progress
+    # Progress bar
     progress = (current_idx + 1) / len(questions)
     st.progress(progress)
     st.write(f"Progress: {current_idx + 1}/{len(questions)} questions")
@@ -542,4 +557,5 @@ def export_history(quiz_manager):
         )
 
 if __name__ == "__main__":
+
     main()
