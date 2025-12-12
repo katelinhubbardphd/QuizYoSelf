@@ -92,33 +92,33 @@ class QuizManager:
         except Exception as e:
             return False, f"Error loading CSV: {str(e)}"
 
-    def start_quiz(self, class_name, selected_chapters, num_questions, chapter_questions):
-        """Start the quiz session with selected chapters and number of questions"""
-        # Reset current stats
-        self.current_stats = {
-            'total_questions': 0,
-            'correct_answers': 0,
-            'chapter_stats': {},
-            'missed_questions': [],
-            'class_name': class_name,
-            'start_time': datetime.now(),
-            'selected_chapters': selected_chapters
-        }
-        
-        # Collect all questions from selected chapters
-        all_questions = []
-        for chapter in selected_chapters:
-            if chapter in chapter_questions:
-                all_questions.extend(chapter_questions[chapter])
-        
-        if not all_questions:
-            return False, "No questions available for selected chapters."
-        
-        # Shuffle and select the requested number of questions
-        random.shuffle(all_questions)
-        selected_questions = all_questions[:min(num_questions, len(all_questions))]
-        
-        return True, selected_questions
+def start_quiz(self, class_name, selected_chapters, num_questions, chapter_questions):
+    """Start the quiz session with selected chapters and number of questions"""
+    # Reset current stats
+    self.current_stats = {
+        'total_questions': 0,
+        'correct_answers': 0,
+        'chapter_stats': {},
+        'missed_questions': [],
+        'class_name': class_name,
+        'start_time': datetime.now(),
+        'selected_chapters': selected_chapters
+    }
+    
+    # Collect all questions from selected chapters
+    all_questions = []
+    for chapter in selected_chapters:
+        if chapter in chapter_questions:
+            all_questions.extend(chapter_questions[chapter])
+    
+    if not all_questions:
+        return False, "No questions available for selected chapters."
+    
+    # Shuffle and select the requested number of questions
+    random.shuffle(all_questions)
+    selected_questions = all_questions[:min(num_questions, len(all_questions))]
+    
+    return True, selected_questions
 
     def submit_answer(self, question, user_answer, question_number):
         """Process a single answer and update statistics"""
@@ -209,7 +209,7 @@ def main():
     # ... rest of main function remains the same ...
 
 def take_quiz(quiz_manager):
-    st.header("Take Quiz")
+    st.header("🎯 Take Quiz")
     
     # Check if we should show results from a completed quiz
     if st.session_state.show_results and quiz_manager.current_stats['total_questions'] > 0:
@@ -295,7 +295,7 @@ def display_quiz_question(quiz_manager):
 
 def display_quiz_results(quiz_manager):
     """Display detailed quiz results after completion"""
-    st.header("Quiz Results")
+    st.header("📊 Quiz Results")
     
     if not quiz_manager.current_stats or quiz_manager.current_stats['total_questions'] == 0:
         st.warning("No quiz results available.")
@@ -309,7 +309,7 @@ def display_quiz_results(quiz_manager):
     percentage = (correct_answers / total_questions * 100) if total_questions > 0 else 0
     
     # Display overall results with metrics
-    st.subheader("Overall Performance")
+    st.subheader("📈 Overall Performance")
     
     col1, col2, col3, col4 = st.columns(4)
     
@@ -330,18 +330,18 @@ def display_quiz_results(quiz_manager):
     
     # Grade interpretation
     if percentage >= 90:
-        st.success(f"Excellent! You scored {percentage:.1f}%")
+        st.success(f"🎉 Excellent! You scored {percentage:.1f}%")
     elif percentage >= 80:
-        st.success(f"Very Good! You scored {percentage:.1f}%")
-    elif percentage >= 73:
-        st.info(f"Good job! You scored {percentage:.1f}%")
+        st.success(f"👍 Very Good! You scored {percentage:.1f}%")
+    elif percentage >= 70:
+        st.info(f"😊 Good job! You scored {percentage:.1f}%")
     elif percentage >= 60:
-        st.warning(f"Keep practicing! You scored {percentage:.1f}%")
+        st.warning(f"📚 Keep practicing! You scored {percentage:.1f}%")
     else:
-        st.error(f"Review needed! You scored {percentage:.1f}%")
+        st.error(f"📖 Review needed! You scored {percentage:.1f}%")
     
     # Display chapter-by-chapter performance
-    st.subheader("Chapter Performance")
+    st.subheader("📚 Chapter Performance")
     
     if stats['chapter_stats']:
         chapter_data = []
@@ -378,7 +378,7 @@ def display_quiz_results(quiz_manager):
     
     # Show missed questions summary
     if stats['missed_questions']:
-        st.subheader("Missed Questions Summary")
+        st.subheader("❌ Missed Questions Summary")
         
         # Count missed questions by chapter
         missed_by_chapter = {}
@@ -392,12 +392,12 @@ def display_quiz_results(quiz_manager):
             st.write(f"- Chapter {chapter}: {count} questions")
         
         # Option to review missed questions immediately
-        if st.button("Review Missed Questions Now"):
+        if st.button("🔍 Review Missed Questions Now"):
             st.session_state.show_results = False
             st.rerun()
     
     # Quiz details
-    st.subheader("Quiz Details")
+    st.subheader("ℹ️ Quiz Details")
     col1, col2 = st.columns(2)
     
     with col1:
@@ -420,7 +420,7 @@ def display_quiz_results(quiz_manager):
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        if st.button("Retry Same Quiz", use_container_width=True):
+        if st.button("🔄 Retry Same Quiz", use_container_width=True):
             # Reset and restart with same settings
             st.session_state.quiz_started = True
             st.session_state.quiz_completed = False
@@ -430,19 +430,19 @@ def display_quiz_results(quiz_manager):
             st.rerun()
     
     with col2:
-        if st.button("New Quiz", type="primary", use_container_width=True):
+        if st.button("📝 New Quiz", type="primary", use_container_width=True):
             st.session_state.show_results = False
             st.rerun()
     
     with col3:
-        if st.button("View Full History", use_container_width=True):
+        if st.button("📊 View Full History", use_container_width=True):
             # Navigate to history page
             st.session_state.show_results = False
             # You might want to set a navigation state here
             st.info("Navigate to 'Quiz History' in the sidebar to see all your quiz attempts.")
 
 def review_missed_questions(quiz_manager):
-    st.header("Review Missed Questions")
+    st.header("📝 Review Missed Questions")
     
     if not quiz_manager.current_stats['missed_questions']:
         st.info("No missed questions to review from the last session.")
@@ -461,8 +461,8 @@ def review_missed_questions(quiz_manager):
     for i, question in enumerate(missed_questions, 1):
         with st.expander(f"Missed Question {i} (Chapter: {question['chapter']})"):
             st.write(f"**Question:** {question['question_text']}")
-            st.write(f"**Your Answer:** Incorrect: {question['user_answer']}")
-            st.write(f"**Correct Answer:** Correct: {question['correct_answer']}")
+            st.write(f"**Your Answer:** ❌ {question['user_answer']}")
+            st.write(f"**Correct Answer:** ✅ {question['correct_answer']}")
             st.write(f"**Reasoning:** {question['reasoning']}")
     
     # Back button to results
@@ -471,7 +471,7 @@ def review_missed_questions(quiz_manager):
         st.rerun()
         
 def show_quiz_history(quiz_manager):
-    st.header("Quiz History")
+    st.header("📊 Quiz History")
     
     history_df = quiz_manager.get_history_df()
     
@@ -506,7 +506,7 @@ def show_quiz_history(quiz_manager):
         st.line_chart(chart_data.set_index('Date')['Percentage Numeric'])
 
 def export_history(quiz_manager):
-    st.header("Export History")
+    st.header("💾 Export History")
     
     if not quiz_manager.history:
         st.warning("No history available to export.")
