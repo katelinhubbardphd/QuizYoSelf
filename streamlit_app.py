@@ -1,10 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Fri Nov 21 15:46:54 2025
-
-@author: hubba
-"""
-
 import streamlit as st
 import pandas as pd
 import csv
@@ -12,32 +5,6 @@ import os
 import random
 from datetime import datetime
 import io
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.lib.pagesizes import letter
-from io import BytesIO
-
-def generate_missed_questions_pdf(missed_questions):
-    buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=letter)
-    styles = getSampleStyleSheet()
-    story = []
-
-    story.append(Paragraph("<b>Missed Questions Report</b>", styles['Title']))
-    story.append(Spacer(1, 20))
-
-    if not missed_questions:
-        story.append(Paragraph("No missed questions — great job!", styles['BodyText']))
-    else:
-        for i, item in enumerate(missed_questions, start=1):
-            story.append(Paragraph(f"<b>Question {i}:</b> {item['question_text']}", styles['BodyText']))
-            story.append(Paragraph(f"<b>Your Answer:</b> {item['your_answer']}", styles['BodyText']))
-            story.append(Paragraph(f"<b>Correct Answer:</b> {item['correct_answer']}", styles['BodyText']))
-            story.append(Spacer(1, 12))
-
-    doc.build(story)
-    buffer.seek(0)
-    return buffer
 
 class QuizManager:
     def __init__(self):
@@ -149,7 +116,7 @@ class QuizManager:
         
         # Shuffle and select the requested number of questions
         random.shuffle(all_questions)
-        selected_questions = all_questions[:num_questions]
+        selected_questions = all_questions[:min(num_questions, len(all_questions))]
         
         return True, selected_questions
 
@@ -235,7 +202,7 @@ class QuizManager:
 def main():
     st.set_page_config(
         page_title="Quiz Master",
-        page_icon="📚",
+        page_icon="Page",
         layout="wide",
         initial_sidebar_state="expanded"
     )
@@ -262,7 +229,7 @@ def main():
     quiz_manager = st.session_state.quiz_manager
     
     # Sidebar
-    st.sidebar.title("📚 Quiz Master")
+    st.sidebar.title("Quiz Master")
     st.sidebar.markdown("---")
     
     # Main navigation
@@ -304,7 +271,7 @@ def main():
         export_history(quiz_manager)
 
 def load_quiz_set(quiz_manager):
-    st.header("📥 Load Quiz Set")
+    st.header("Load Quiz Set")
     
     col1, col2 = st.columns(2)
     
@@ -325,9 +292,9 @@ def load_quiz_set(quiz_manager):
                     success, result = quiz_manager.load_csv(None, uploaded_file)
                     if success:
                         quiz_manager.quizzes[class_name] = result
-                        st.success(f"✅ Loaded {sum(len(q) for q in result.values())} questions from {len(result)} chapters for class '{class_name}'")
+                        st.success(f"Loaded {sum(len(q) for q in result.values())} questions from {len(result)} chapters for class '{class_name}'")
                     else:
-                        st.error(f"❌ {result}")
+                        st.error(f"Fail {result}")
                         
             except Exception as e:
                 st.error(f"Error reading CSV file: {str(e)}")
@@ -342,7 +309,7 @@ def load_quiz_set(quiz_manager):
             st.info("No classes loaded yet. Upload a CSV file to get started.")
 
 def take_quiz(quiz_manager):
-    st.header("🎯 Take Quiz")
+    st.header("Take Quiz")
     
     if not quiz_manager.quizzes:
         st.warning("Please load a quiz set first from the 'Load Quiz Set' page.")
@@ -356,188 +323,107 @@ def take_quiz(quiz_manager):
         chapter_questions = quiz_manager.quizzes[class_name]
         available_chapters = list(chapter_questions.keys())
         
-        selected_chapters = st.multiselect(
+        # Add "All Chapters" option
+        all_chapters_option = ["All Chapters"] + available_chapters
+        chapter_selection = st.multiselect(
             "Select Chapters", 
-            available_chapters,
-            default=available_chapters
+            all_chapters_option,
+            default=["All Chapters"]
         )
+        
+        # Handle "All Chapters" selection
+        if "All Chapters" in chapter_selection:
+            selected_chapters = available_chapters
+        else:
+            selected_chapters = [ch for ch in chapter_selection if ch != "All Chapters"]
     
     with col2:
-        total_available = sum(len(chapter_questions[ch]) for ch in selected_chapters) if selected_chapters else 0
-        max_questions = st.number_input(
-            "Number of Questions", 
-            min_value=1, 
-            max_value=total_available, 
-            value=min(10, total_available) if total_available > 0 else 1
-        )
+        # Calculate total available questions for selected chapters
+        total_available = 0
+        if selected_chapters:
+            total_available = sum(len(chapter_questions[ch]) for ch in selected_chapters)
         
         if total_available == 0:
             st.warning("No questions available for selected chapters.")
-            return
+            max_questions = 1
+        else:
+            max_questions = st.number_input(
+                "Number of Questions", 
+                min_value=1, 
+                max_value=total_available, 
+                value=min(10, total_available)
+            )
     
-        if st.button("Start Quiz") and selected_chapters:
-            success, questions = quiz_manager.start_quiz(class_name, selected_chapters, max_questions, chapter_questions)
+    # Filter questions for selected chapters
+    if selected_chapters:
+        # Collect questions from selected chapters
+        filtered_questions = []
+        for chapter in selected_chapters:
+            if chapter in chapter_questions:
+                filtered_questions.extend(chapter_questions[chapter])
         
+        # Display info about selected questions
+        st.info(f"**Selected:** {len(selected_chapters)} chapters, {len(filtered_questions)} questions available")
+        
+        if st.button("Start Quiz", disabled=len(filtered_questions) == 0):
+            # Start quiz with filtered questions
+            success, questions = quiz_manager.start_quiz(class_name, selected_chapters, max_questions, chapter_questions)
             if success:
                 st.session_state.current_quiz = questions
                 st.session_state.quiz_started = True
                 st.session_state.quiz_completed = False
                 st.session_state.current_question = 0
-        
-                # NEW: Generate stable option sets
-                st.session_state.options_for_question = []
-                for q in questions:
-                    opts = q['alternatives'] + [q['correct_answer']]
-                    random.shuffle(opts)
-                    st.session_state.options_for_question.append(opts)
-        
-                # NEW: Initialize answers only once
                 st.session_state.user_answers = [None] * len(questions)
-        
-                # NEW: Prevent double-grading
-                st.session_state.answers_processed = False
-        
                 st.rerun()
             else:
                 st.error(questions)
-        
-
+    else:
+        st.warning("Please select at least one chapter.")
     
     # Display current quiz if in progress
     if st.session_state.quiz_started and st.session_state.current_quiz:
         display_quiz_question(quiz_manager)
-            # Show results and allow PDF download after quiz completion
-    if st.session_state.get('quiz_completed', False) and st.session_state.get('current_quiz'):
-        st.markdown("---")
-        st.header("📋 Quiz Results")
-
-        # Use the stats already stored in quiz_manager.current_stats if available
-        stats = quiz_manager.current_stats
-        total = stats.get('total_questions', 0)
-        correct = stats.get('correct_answers', 0)
-
-        # Fallback calculation if stats are missing or zero
-        if total == 0 and st.session_state.current_quiz:
-            # compute from answers as a safe fallback
-            total = len(st.session_state.current_quiz)
-            correct = 0
-            for q, ans in zip(st.session_state.current_quiz, st.session_state.user_answers):
-                if ans == q['correct_answer']:
-                    correct += 1
-
-        pct = round((correct / total) * 100, 1) if total > 0 else 0.0
-
-        col1, col2, col3 = st.columns([1,1,2])
-        with col1:
-            st.metric("Score", f"{correct}/{total}")
-        with col2:
-            st.metric("Percentage", f"{pct}%")
-        with col3:
-            # show class and chapters if available
-            st.write(f"**Class:** {stats.get('class_name', '—')}")
-            selected_chapters = stats.get('selected_chapters', [])
-            if selected_chapters:
-                st.write(f"**Chapters:** {', '.join(selected_chapters)}")
-
-        st.write("")
-
-        # Build missed questions list either from quiz_manager.current_stats or by comparing answers
-        missed = []
-        if stats.get('missed_questions'):
-            # convert stored missed question format into consistent fields
-            for mq in stats['missed_questions']:
-                missed.append({
-                    'question_text': mq.get('question_text', mq.get('question', '')),
-                    'your_answer': mq.get('user_answer', mq.get('your_answer', '')),
-                    'correct_answer': mq.get('correct_answer', '')
-                })
-        else:
-            # fallback: compute missed from current_quiz and user_answers
-            for q, ans in zip(st.session_state.current_quiz, st.session_state.user_answers):
-                if ans != q['correct_answer']:
-                    missed.append({
-                        'question_text': q['question_text'],
-                        'your_answer': ans,
-                        'correct_answer': q['correct_answer']
-                    })
-
-        # Display missed questions
-        st.subheader("Missed Questions")
-        if not missed:
-            st.success("🎉 You answered all questions correctly!")
-        else:
-            for i, mq in enumerate(missed, start=1):
-                with st.expander(f"Missed {i}: {mq['question_text'][:80]}"):
-                    st.write(f"**Question:** {mq['question_text']}")
-                    st.write(f"- **Your answer:** {mq['your_answer']}")
-                    st.write(f"- **Correct answer:** {mq['correct_answer']}")
-
-        # Provide PDF download of missed questions using your generator
-        try:
-            pdf_buf = generate_missed_questions_pdf([
-                {'question_text': m['question_text'],
-                 'your_answer': m['your_answer'],
-                 'correct_answer': m['correct_answer']}
-                for m in missed
-            ])
-
-            filename = f"missed_questions_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-            st.download_button(
-                label="📄 Download Missed Questions (PDF)",
-                data=pdf_buf,
-                file_name=filename,
-                mime="application/pdf"
-            )
-        except Exception as e:
-            st.error(f"Could not generate PDF: {e}")
-
-        # Optionally allow restarting a new quiz (clears state)
-        if st.button("Start a New Quiz"):
-            # clear quiz state keys but preserve loaded quizzes
-            keys_to_clear = ['current_quiz', 'current_question', 'quiz_started', 'quiz_completed',
-                             'user_answers', 'options_for_question', 'answers_processed']
-            for k in keys_to_clear:
-                if k in st.session_state:
-                    del st.session_state[k]
-            st.experimental_rerun()
-
 
 def display_quiz_question(quiz_manager):
     questions = st.session_state.current_quiz
     current_idx = st.session_state.current_question
-
-    # If quiz ended early
+    
     if current_idx >= len(questions):
         return
-
+    
     question = questions[current_idx]
-
+    
     st.markdown("---")
     st.subheader(f"Question {current_idx + 1} of {len(questions)}")
     st.write(f"**Chapter:** {question['chapter']}")
     st.write(f"**Question:** {question['question_text']}")
-
-    # Stable options pulled from session_state
-    options = st.session_state.options_for_question[current_idx]
-
-    # Display radio button, but do NOT reshuffle
+    
+    # Prepare options
+    options = question['alternatives'] + [question['correct_answer']]
+    random.shuffle(options)
+    
+    # Store the mapping for answer checking
+    if 'option_mapping' not in st.session_state:
+        st.session_state.option_mapping = {}
+    st.session_state.option_mapping[current_idx] = options
+    
+    # Display options as radio buttons
     user_answer = st.radio(
         "Select your answer:",
         options,
         key=f"question_{current_idx}"
     )
-
+    
     st.session_state.user_answers[current_idx] = user_answer
-
-    # Navigation
+    
     col1, col2 = st.columns(2)
-
+    
     with col1:
         if current_idx > 0:
             if st.button("← Previous Question"):
                 st.session_state.current_question -= 1
                 st.rerun()
-
+    
     with col2:
         if current_idx < len(questions) - 1:
             if st.button("Next Question →"):
@@ -545,26 +431,23 @@ def display_quiz_question(quiz_manager):
                 st.rerun()
         else:
             if st.button("Submit Quiz", type="primary"):
-                # Prevent double-submission
-                if not st.session_state.answers_processed:
-                    for i, (q, ans) in enumerate(zip(questions, st.session_state.user_answers)):
-                        if ans is not None:
-                            quiz_manager.submit_answer(q, ans, i + 1)
-
-                    quiz_manager.save_quiz_session()
-                    st.session_state.answers_processed = True
-
+                # Process all answers
+                for i, (q, answer) in enumerate(zip(questions, st.session_state.user_answers)):
+                    if answer is not None:
+                        quiz_manager.submit_answer(q, answer, i + 1)
+                
                 st.session_state.quiz_completed = True
                 st.session_state.quiz_started = False
+                quiz_manager.save_quiz_session()
                 st.rerun()
 
-    # Progress bar
+    # Show progress
     progress = (current_idx + 1) / len(questions)
     st.progress(progress)
     st.write(f"Progress: {current_idx + 1}/{len(questions)} questions")
 
 def view_all_questions(quiz_manager):
-    st.header("📋 All Questions")
+    st.header("All Questions")
     
     if not quiz_manager.quizzes:
         st.warning("Please load a quiz set first from the 'Load Quiz Set' page.")
@@ -584,7 +467,7 @@ def view_all_questions(quiz_manager):
                 st.markdown("---")
 
 def review_missed_questions(quiz_manager):
-    st.header("📝 Review Missed Questions")
+    st.header("Review Missed Questions")
     
     if not quiz_manager.current_stats['missed_questions']:
         st.info("No missed questions to review from the last session.")
@@ -597,12 +480,12 @@ def review_missed_questions(quiz_manager):
     for i, question in enumerate(missed_questions, 1):
         with st.expander(f"Missed Question {i} (Chapter: {question['chapter']})"):
             st.write(f"**Question:** {question['question_text']}")
-            st.write(f"**Your Answer:** ❌ {question['user_answer']}")
-            st.write(f"**Correct Answer:** ✅ {question['correct_answer']}")
+            st.write(f"**Your Answer:** Incorrect {question['user_answer']}")
+            st.write(f"**Correct Answer:** Correct {question['correct_answer']}")
             st.write(f"**Reasoning:** {question['reasoning']}")
 
 def show_quiz_history(quiz_manager):
-    st.header("📊 Quiz History")
+    st.header("Quiz History")
     
     history_df = quiz_manager.get_history_df()
     
@@ -637,7 +520,7 @@ def show_quiz_history(quiz_manager):
         st.line_chart(chart_data.set_index('Date')['Percentage Numeric'])
 
 def export_history(quiz_manager):
-    st.header("💾 Export History")
+    st.header("Export History")
     
     if not quiz_manager.history:
         st.warning("No history available to export.")
@@ -678,6 +561,4 @@ def export_history(quiz_manager):
         )
 
 if __name__ == "__main__":
-
     main()
-
